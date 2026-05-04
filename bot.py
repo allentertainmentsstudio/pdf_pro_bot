@@ -32,20 +32,18 @@ async def start(_, msg):
     add_user(msg.from_user.id, msg.from_user.first_name)
 
     await msg.reply_text(
-        """✨ What I Can Do for You 🤖
-
-🎯 Convert images into high-quality PDFs  
-📦 Compress & optimize files without losing clarity  
-✂️ Split or merge PDFs with ease  
-🔐 Encrypt & decrypt documents for secure access  
-💧 Add clean watermarks & professional stamps  
-📄 Extract text and images from PDFs  
-🔍 Explore and search a vast book library  
-
-💡 Just send a PDF or image to get started  
-📚 Tap ⚠️ HELP to view the complete feature list"""
+        "**✨ What I Can Do for You 🤖**\n\n"
+        "🎯 **Convert images into high-quality PDFs**\n"
+        "📦 **Compress & optimize files without losing clarity**\n"
+        "✂️ **Split or merge PDFs with ease**\n"
+        "🔐 **Encrypt & decrypt documents for secure access**\n"
+        "💧 **Add clean watermarks & professional stamps**\n"
+        "📄 **Extract text and images from PDFs**\n"
+        "🔍 **Explore and search a vast book library**\n\n"
+        "💡 **Just send a PDF or image to get started**\n"
+        "📚 Tap /help to view the complete feature list",
+        disable_web_page_preview=True
     )
-
 
 # ---------------- BAN + MAINTENANCE CHECK ---------------- #
 @app.on_message()
