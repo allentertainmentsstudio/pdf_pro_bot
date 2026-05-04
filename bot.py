@@ -27,123 +27,155 @@ MAINTENANCE = False
 
 
 # ---------------- START ---------------- #
-@app.on_message(filters.command("start"))
+@app.on_message(filters.command("start"), group=0)
 async def start(_, msg):
     add_user(msg.from_user.id, msg.from_user.first_name)
 
     await msg.reply_text(
         "**✨ What I Can Do for You 🤖**\n\n"
-        "🎯 **Convert images into high-quality PDFs**\n"
-        "📦 **Compress & optimize files without losing clarity**\n"
-        "✂️ **Split or merge PDFs with ease**\n"
-        "🔐 **Encrypt & decrypt documents for secure access**\n"
-        "💧 **Add clean watermarks & professional stamps**\n"
-        "📄 **Extract text and images from PDFs**\n"
-        "🔍 **Explore and search a vast book library**\n\n"
-        "💡 **Just send a PDF or image to get started**\n"
-        "📚 Tap /help to view the complete feature list",
+        "🎯 Convert images into high-quality PDFs\n"
+        "📦 Compress & optimize files\n"
+        "✂️ Split or merge PDFs\n"
+        "🔐 Secure documents\n"
+        "📄 Extract text from PDFs\n\n"
+        "💡 Send a file to get started!\n"
+        "📚 Use /ocr to extract text",
         disable_web_page_preview=True
     )
 
+
 # ---------------- BAN + MAINTENANCE CHECK ---------------- #
-@app.on_message()
+@app.on_message(filters.all, group=1)
 async def check(_, msg):
     global MAINTENANCE
 
-    if is_banned(msg.from_user.id):
-        return await msg.reply("🚫 You are banned from using this bot")
+    if msg.from_user:
+        if is_banned(msg.from_user.id):
+            await msg.reply("🚫 You are banned from using this bot")
+            return
 
-    if MAINTENANCE and not is_admin(msg.from_user.id):
-        return await msg.reply("⚠️ Bot under maintenance")
+        if MAINTENANCE and not is_admin(msg.from_user.id):
+            await msg.reply("⚠️ Bot under maintenance")
+            return
 
 
 # ---------------- FILE HANDLER ---------------- #
-@app.on_message(filters.document)
+@app.on_message(filters.document | filters.photo, group=2)
 async def handle(client, message):
+    try:
+        add_user(message.from_user.id, message.from_user.first_name)
 
-    add_user(message.from_user.id, message.from_user.first_name)
+        path = await message.download(file_name=BASE)
+        user_dir = os.path.join(BASE, str(message.from_user.id))
+        os.makedirs(user_dir, exist_ok=True)
 
-    path = await message.download(file_name=BASE)
-    user_dir = os.path.join(BASE, str(message.from_user.id))
-    os.makedirs(user_dir, exist_ok=True)
+        status = await message.reply("⏳ Processing...")
 
-    status = await message.reply("⏳ Processing...")
+        # IMAGE → PDF
+        if path.lower().endswith((".jpg", ".jpeg", ".png")):
+            output = os.path.join(user_dir, "output.pdf")
+            result = images_to_pdf([path], output)
 
-    if path.endswith(".zip"):
-        extract_zip(path, user_dir)
-        output = os.path.join(user_dir, "output.pdf")
-        result = images_to_pdf(user_dir, output)
+            if result:
+                inc_files(message.from_user.id)
+                await status.edit("✅ PDF Ready")
+                await message.reply_document(result)
 
-        if result:
-            inc_files(message.from_user.id)
-            await message.reply_document(result, caption="✅ PDF Ready")
-    else:
-        await status.edit("❌ Only ZIP supported")
+        # ZIP → PDF
+        elif path.lower().endswith(".zip"):
+            extract_zip(path, user_dir)
+            output = os.path.join(user_dir, "output.pdf")
+            result = images_to_pdf(user_dir, output)
 
-    shutil.rmtree(user_dir, ignore_errors=True)
-    os.remove(path)
+            if result:
+                inc_files(message.from_user.id)
+                await status.edit("✅ PDF Ready")
+                await message.reply_document(result)
+
+        else:
+            await status.edit("❌ Unsupported file")
+
+    except Exception as e:
+        await message.reply(f"❌ Error: {e}")
+
+    finally:
+        shutil.rmtree(user_dir, ignore_errors=True)
+        if os.path.exists(path):
+            os.remove(path)
 
 
 # ---------------- OCR ---------------- #
-@app.on_message(filters.command("ocr"))
+@app.on_message(filters.command("ocr"), group=2)
 async def ocr_cmd(_, msg):
+    try:
+        if not msg.reply_to_message:
+            return await msg.reply("❌ Reply to image or PDF")
 
-    if not msg.reply_to_message:
-        return await msg.reply("❌ Reply to file")
+        await msg.reply("⏳ Extracting text...")
 
-    file = await msg.reply_to_message.download(file_name=BASE)
+        file = await msg.reply_to_message.download(file_name=BASE)
 
-    text = ""
+        if file.lower().endswith((".jpg", ".png", ".jpeg")):
+            text = image_to_text(file)
 
-    if file.endswith((".jpg", ".png", ".jpeg")):
-        text = image_to_text(file)
+        elif file.lower().endswith(".pdf"):
+            text = pdf_to_text(file)
 
-    elif file.endswith(".pdf"):
-        text = pdf_to_text(file)
+        else:
+            return await msg.reply("❌ Unsupported file")
 
-    else:
-        return await msg.reply("❌ Unsupported file")
+        out = file + ".txt"
 
-    out = file + ".txt"
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(text)
 
-    with open(out, "w", encoding="utf-8") as f:
-        f.write(text)
+        await msg.reply_document(out, caption="📄 OCR Result")
 
-    await msg.reply_document(out, caption="📄 OCR Result")
+    except Exception as e:
+        await msg.reply(f"❌ Error: {e}")
 
-    os.remove(file)
-    os.remove(out)
+    finally:
+        if os.path.exists(file):
+            os.remove(file)
+        if os.path.exists(file + ".txt"):
+            os.remove(file + ".txt")
 
 
 # ---------------- ADMIN ---------------- #
-@app.on_message(filters.command("stats"))
+@app.on_message(filters.command("stats"), group=2)
 async def stats(_, msg):
     if not is_admin(msg.from_user.id):
         return
     await msg.reply(f"📊 Users: {get_user_count()}")
 
 
-@app.on_message(filters.command("ban"))
+@app.on_message(filters.command("ban"), group=2)
 async def ban_cmd(_, msg):
     if not is_admin(msg.from_user.id):
         return
+
+    if len(msg.command) < 2:
+        return await msg.reply("❌ Provide user ID")
 
     user_id = int(msg.command[1])
     ban_user(user_id)
     await msg.reply("🚫 User banned")
 
 
-@app.on_message(filters.command("unban"))
+@app.on_message(filters.command("unban"), group=2)
 async def unban_cmd(_, msg):
     if not is_admin(msg.from_user.id):
         return
+
+    if len(msg.command) < 2:
+        return await msg.reply("❌ Provide user ID")
 
     user_id = int(msg.command[1])
     unban_user(user_id)
     await msg.reply("✅ User unbanned")
 
 
-@app.on_message(filters.command("maintenance"))
+@app.on_message(filters.command("maintenance"), group=2)
 async def maintenance(_, msg):
     global MAINTENANCE
     if not is_admin(msg.from_user.id):
