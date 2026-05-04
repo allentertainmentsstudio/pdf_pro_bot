@@ -1,0 +1,10 @@
+flask
+pyrogram
+tgcrypto
+img2pdf
+PyPDF2
+pillow
+pymongo
+pytesseract
+pdf2image
+opencv-python
