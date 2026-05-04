@@ -6,7 +6,10 @@ from pyrogram import Client, filters
 
 from config import API_ID, API_HASH, BOT_TOKEN
 from admin import is_admin
-from database import add_user, inc_files, get_user_count
+from database import (
+    add_user, inc_files, get_user_count,
+    ban_user, unban_user, is_banned
+)
 
 from utils.zip import extract_zip
 from utils.pdf import images_to_pdf
@@ -33,16 +36,20 @@ async def start(_, msg):
 
 📸 Images → PDF
 📦 ZIP → PDF
-🧠 OCR → Text extraction
+🧠 OCR → Text Extraction
 
 Send file to start 🚀"""
     )
 
 
-# ---------------- MAINTENANCE CHECK ---------------- #
+# ---------------- BAN + MAINTENANCE CHECK ---------------- #
 @app.on_message()
 async def check(_, msg):
     global MAINTENANCE
+
+    if is_banned(msg.from_user.id):
+        return await msg.reply("🚫 You are banned from using this bot")
+
     if MAINTENANCE and not is_admin(msg.from_user.id):
         return await msg.reply("⚠️ Bot under maintenance")
 
@@ -67,7 +74,6 @@ async def handle(client, message):
         if result:
             inc_files(message.from_user.id)
             await message.reply_document(result, caption="✅ PDF Ready")
-
     else:
         await status.edit("❌ Only ZIP supported")
 
@@ -75,37 +81,35 @@ async def handle(client, message):
     os.remove(path)
 
 
-# ---------------- OCR COMMAND ---------------- #
+# ---------------- OCR ---------------- #
 @app.on_message(filters.command("ocr"))
-async def ocr_cmd(client, message):
+async def ocr_cmd(_, msg):
 
-    if not message.reply_to_message:
-        return await message.reply("❌ Reply to file")
+    if not msg.reply_to_message:
+        return await msg.reply("❌ Reply to file")
 
-    file = await message.reply_to_message.download(file_name=BASE)
-
-    await message.reply("🧠 Extracting text...")
+    file = await msg.reply_to_message.download(file_name=BASE)
 
     text = ""
 
-    if file.endswith((".jpg", ".jpeg", ".png")):
+    if file.endswith((".jpg", ".png", ".jpeg")):
         text = image_to_text(file)
 
     elif file.endswith(".pdf"):
         text = pdf_to_text(file)
 
     else:
-        return await message.reply("❌ Unsupported file")
+        return await msg.reply("❌ Unsupported file")
 
-    txt_file = file + ".txt"
+    out = file + ".txt"
 
-    with open(txt_file, "w", encoding="utf-8") as f:
+    with open(out, "w", encoding="utf-8") as f:
         f.write(text)
 
-    await message.reply_document(txt_file, caption="📄 OCR Result")
+    await msg.reply_document(out, caption="📄 OCR Result")
 
     os.remove(file)
-    os.remove(txt_file)
+    os.remove(out)
 
 
 # ---------------- ADMIN ---------------- #
@@ -113,8 +117,27 @@ async def ocr_cmd(client, message):
 async def stats(_, msg):
     if not is_admin(msg.from_user.id):
         return
-
     await msg.reply(f"📊 Users: {get_user_count()}")
+
+
+@app.on_message(filters.command("ban"))
+async def ban_cmd(_, msg):
+    if not is_admin(msg.from_user.id):
+        return
+
+    user_id = int(msg.command[1])
+    ban_user(user_id)
+    await msg.reply("🚫 User banned")
+
+
+@app.on_message(filters.command("unban"))
+async def unban_cmd(_, msg):
+    if not is_admin(msg.from_user.id):
+        return
+
+    user_id = int(msg.command[1])
+    unban_user(user_id)
+    await msg.reply("✅ User unbanned")
 
 
 @app.on_message(filters.command("maintenance"))
@@ -137,8 +160,5 @@ def run_flask():
 
 
 if __name__ == "__main__":
-    t1 = threading.Thread(target=run_flask)
-    t2 = threading.Thread(target=run_bot)
-
-    t1.start()
-    t2.start()
+    threading.Thread(target=run_flask).start()
+    threading.Thread(target=run_bot).start()
