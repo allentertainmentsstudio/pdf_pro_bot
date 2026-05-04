@@ -1,0 +1,15 @@
+pdf_pro_bot/
+│
+├── bot.py
+├── web.py
+├── config.py
+├── admin.py
+├── database.py
+│
+├── utils/
+│   ├── pdf.py
+│   ├── zip.py
+│   ├── ocr.py
+│
+├── temp/
+└── storage/
